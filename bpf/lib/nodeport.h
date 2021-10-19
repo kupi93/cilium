@@ -1100,6 +1100,7 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 					   bool *from_endpoint __maybe_unused)
 {
 	struct endpoint_info *ep __maybe_unused;
+	struct remote_endpoint_info __maybe_unused *info;
 	void *data, *data_end;
 	struct iphdr *ip4;
 	struct ipv4_ct_tuple tuple __maybe_unused = {};
@@ -1157,71 +1158,72 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 #endif
 
 	ep = __lookup_ip4_endpoint(ip4->saddr);
-	if (ep && !(ep->flags & ENDPOINT_F_HOST)) {
-		struct remote_endpoint_info *info;
-		*from_endpoint = true;
+	/* If this is a localhost endpoint, no SNAT is needed. */
+	if (ep && ep->flags & ENDPOINT_F_HOST)
+		return false;
 
-		info = ipcache_lookup4(&IPCACHE_MAP, ip4->daddr,
-				       V4_CACHE_KEY_LEN);
-		if (info) {
+	*from_endpoint = true;
+
+	info = ipcache_lookup4(&IPCACHE_MAP, ip4->daddr,
+			       V4_CACHE_KEY_LEN);
+	if (info) {
 #ifdef ENABLE_IP_MASQ_AGENT
-			/* Do not SNAT if dst belongs to any ip-masq-agent
-			 * subnet.
-			 */
-			struct lpm_v4_key pfx;
+		/* Do not SNAT if dst belongs to any ip-masq-agent
+		 * subnet.
+		 */
+		struct lpm_v4_key pfx;
 
-			pfx.lpm.prefixlen = 32;
-			memcpy(pfx.lpm.data, &ip4->daddr, sizeof(pfx.addr));
-			if (map_lookup_elem(&IP_MASQ_AGENT_IPV4, &pfx))
-				return false;
+		pfx.lpm.prefixlen = 32;
+		memcpy(pfx.lpm.data, &ip4->daddr, sizeof(pfx.addr));
+		if (map_lookup_elem(&IP_MASQ_AGENT_IPV4, &pfx))
+			return false;
 #endif
 #ifndef TUNNEL_MODE
-			/* In the tunnel mode, a packet from a local ep
-			 * to a remote node is not encap'd, and is sent
-			 * via a native dev. Therefore, such packet has
-			 * to be MASQ'd. Otherwise, it might be dropped
-			 * either by underlying network (e.g. AWS drops
-			 * packets by default from unknown subnets) or
-			 * by the remote node if its native dev's
-			 * rp_filter=1.
-			 */
-			if (info->sec_label == REMOTE_NODE_ID)
-				return false;
+		/* In the tunnel mode, a packet from a local ep
+		 * to a remote node is not encap'd, and is sent
+		 * via a native dev. Therefore, such packet has
+		 * to be MASQ'd. Otherwise, it might be dropped
+		 * either by underlying network (e.g. AWS drops
+		 * packets by default from unknown subnets) or
+		 * by the remote node if its native dev's
+		 * rp_filter=1.
+		 */
+		if (info->sec_label == REMOTE_NODE_ID)
+			return false;
 #endif
 #if defined(ENABLE_EGRESS_GATEWAY) && !defined(IS_BPF_OVERLAY)
-			/* If destination is not a remote node, check if egress NAT policy needs
-			 * be applied to the packet. pod to node traffic is considered to be
-			 * in-cluster traffic, which shouldn't be affected by egress NAT policy.
-			 */
-			if (info->sec_label != REMOTE_NODE_ID) {
-				struct egress_info *einfo;
+		/* If destination is not a remote node, check if egress NAT policy needs
+		 * be applied to the packet. pod to node traffic is considered to be
+		 * in-cluster traffic, which shouldn't be affected by egress NAT policy.
+		 */
+		if (info->sec_label != REMOTE_NODE_ID) {
+			struct egress_info *einfo;
 
-				einfo = lookup_ip4_egress_endpoint(ip4->saddr, ip4->daddr);
-				if (einfo) {
-					*addr = einfo->egress_ip;
-					*from_endpoint = true;
-					return true;
-				}
+			einfo = lookup_ip4_egress_endpoint(ip4->saddr, ip4->daddr);
+			if (einfo) {
+				*addr = einfo->egress_ip;
+				*from_endpoint = true;
+				return true;
 			}
+		}
 #endif
 
-			tuple.nexthdr = ip4->protocol;
-			tuple.daddr = ip4->daddr;
-			tuple.saddr = ip4->saddr;
+		tuple.nexthdr = ip4->protocol;
+		tuple.daddr = ip4->daddr;
+		tuple.saddr = ip4->saddr;
 
-			/* The packet is a reply, which means that outside
-			 * has initiated the connection, so no need to SNAT
-			 * the reply.
-			 */
-			if (!ct_is_reply4(get_ct_map4(&tuple), ctx,
-					  ETH_HLEN + ipv4_hdrlen(ip4),
-					  &tuple, &is_reply) &&
-			    is_reply)
-				return false;
+		/* The packet is a reply, which means that outside
+		 * has initiated the connection, so no need to SNAT
+		 * the reply.
+		 */
+		if (!ct_is_reply4(get_ct_map4(&tuple), ctx,
+				  ETH_HLEN + ipv4_hdrlen(ip4),
+				  &tuple, &is_reply) &&
+		    is_reply)
+			return false;
 
-			*addr = IPV4_MASQUERADE;
-			return true;
-		}
+		*addr = IPV4_MASQUERADE;
+		return true;
 	}
 #if defined(ENABLE_EGRESS_GATEWAY) && !defined(IS_BPF_OVERLAY)
 	/* If endpoint is not found on local node, it's from remote node. Also
