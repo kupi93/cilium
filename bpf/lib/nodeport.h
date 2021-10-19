@@ -1180,9 +1180,7 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 		return false;
 
 	*from_endpoint = true;
-
-	info = ipcache_lookup4(&IPCACHE_MAP, ip4->daddr,
-			       V4_CACHE_KEY_LEN);
+	info = ipcache_lookup4(&IPCACHE_MAP, ip4->daddr, V4_CACHE_KEY_LEN);
 	if (info) {
 #ifndef TUNNEL_MODE
 		/* In the tunnel mode, a packet from a local ep
