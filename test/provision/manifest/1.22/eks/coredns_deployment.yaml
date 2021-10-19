@@ -1,4 +1,4 @@
-# File source
+# File source with modifications to the coredns corefile
 # https://raw.githubusercontent.com/kubernetes/kubernetes/release-1.22/cluster/addons/dns/coredns/coredns.yaml.base
 # __MACHINE_GENERATED_WARNING__
 
@@ -63,22 +63,28 @@ metadata:
       addonmanager.kubernetes.io/mode: EnsureExists
 data:
   Corefile: |
+    cilium.test:53 {
+        forward . 10.100.0.100:53 {
+            max_fails 0
+        }
+    }
     .:53 {
+        log
         errors
         health {
             lameduck 5s
         }
         ready
-        kubernetes __DNS__DOMAIN__ in-addr.arpa ip6.arpa {
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
             pods insecure
+            ttl 0
             fallthrough in-addr.arpa ip6.arpa
-            ttl 30
         }
         prometheus :9153
         forward . /etc/resolv.conf {
             max_concurrent 1000
+            max_fails 0
         }
-        cache 30
         loop
         reload
         loadbalance
@@ -138,7 +144,7 @@ spec:
         imagePullPolicy: IfNotPresent
         resources:
           limits:
-            memory: __DNS__MEMORY__LIMIT__
+            memory: 170Mi
           requests:
             cpu: 100m
             memory: 70Mi
@@ -204,7 +210,7 @@ metadata:
 spec:
   selector:
     k8s-app: kube-dns
-  clusterIP: __DNS__SERVER__
+  clusterIP: 10.100.0.10
   ports:
   - name: dns
     port: 53
