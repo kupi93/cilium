@@ -1189,20 +1189,20 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 				return false;
 #endif
 #if defined(ENABLE_EGRESS_GATEWAY) && !defined(IS_BPF_OVERLAY)
-	/* If destination is not a remote node, check if egress NAT policy needs
-	 * be applied to the packet. pod to node traffic is considered to be
-	 * in-cluster traffic, which shouldn't be affected by egress NAT policy.
-	 */
-	if (info->sec_label != REMOTE_NODE_ID) {
-		struct egress_info *einfo;
+			/* If destination is not a remote node, check if egress NAT policy needs
+			 * be applied to the packet. pod to node traffic is considered to be
+			 * in-cluster traffic, which shouldn't be affected by egress NAT policy.
+			 */
+			if (info->sec_label != REMOTE_NODE_ID) {
+				struct egress_info *einfo;
 
-		einfo = lookup_ip4_egress_endpoint(ip4->saddr, ip4->daddr);
-		if (einfo) {
-			*addr = einfo->egress_ip;
-			*from_endpoint = true;
-			return true;
-		}
-	}
+				einfo = lookup_ip4_egress_endpoint(ip4->saddr, ip4->daddr);
+				if (einfo) {
+					*addr = einfo->egress_ip;
+					*from_endpoint = true;
+					return true;
+				}
+			}
 #endif
 
 			tuple.nexthdr = ip4->protocol;
