@@ -1162,6 +1162,20 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 		return false;
 #endif
 
+#ifdef ENABLE_IP_MASQ_AGENT
+		/* Do not SNAT if dst belongs to any ip-masq-agent
+		 * subnet.
+		 */
+		{
+			struct lpm_v4_key pfx;
+
+			pfx.lpm.prefixlen = 32;
+			memcpy(pfx.lpm.data, &ip4->daddr, sizeof(pfx.addr));
+			if (map_lookup_elem(&IP_MASQ_AGENT_IPV4, &pfx))
+				return false;
+		}
+#endif
+
 	ep = __lookup_ip4_endpoint(ip4->saddr);
 	/* If this is a localhost endpoint, no SNAT is needed. */
 	if (ep && ep->flags & ENDPOINT_F_HOST)
@@ -1172,17 +1186,6 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 	info = ipcache_lookup4(&IPCACHE_MAP, ip4->daddr,
 			       V4_CACHE_KEY_LEN);
 	if (info) {
-#ifdef ENABLE_IP_MASQ_AGENT
-		/* Do not SNAT if dst belongs to any ip-masq-agent
-		 * subnet.
-		 */
-		struct lpm_v4_key pfx;
-
-		pfx.lpm.prefixlen = 32;
-		memcpy(pfx.lpm.data, &ip4->daddr, sizeof(pfx.addr));
-		if (map_lookup_elem(&IP_MASQ_AGENT_IPV4, &pfx))
-			return false;
-#endif
 #ifndef TUNNEL_MODE
 		/* In the tunnel mode, a packet from a local ep
 		 * to a remote node is not encap'd, and is sent
