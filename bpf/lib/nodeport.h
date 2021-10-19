@@ -1197,12 +1197,18 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 		if (info->sec_label == REMOTE_NODE_ID)
 			return false;
 #endif
+
 #if defined(ENABLE_EGRESS_GATEWAY) && !defined(IS_BPF_OVERLAY)
-		/* If destination is not a remote node, check if egress NAT policy needs
-		 * be applied to the packet. pod to node traffic is considered to be
-		 * in-cluster traffic, which shouldn't be affected by egress NAT policy.
+		/* We want to exclude internal cluster traffic from the egress
+		 * gateway NAT policy. We use two conditions for doing so:
+		 *  1. destination is a remote node
+		 *  2. endpoint is local
+		 *
+		 * If neither of above conditions are true, packet is not
+		 * internal cluster traffic and we perform a lookup for applying
+		 * egress gateway policy.
 		 */
-		if (info->sec_label != REMOTE_NODE_ID) {
+		if (info->sec_label != REMOTE_NODE_ID && !ep) {
 			struct egress_info *einfo;
 
 			einfo = lookup_ip4_egress_endpoint(ip4->saddr, ip4->daddr);
@@ -1236,22 +1242,6 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 		*addr = IPV4_MASQUERADE;
 		return true;
 	}
-#if defined(ENABLE_EGRESS_GATEWAY) && !defined(IS_BPF_OVERLAY)
-	/* If endpoint is not found on local node, it's from remote node. Also
-	 * check egress rule in ebpf map to see if SNAT needs to apply to the
-	 * packet.
-	 */
-	if (!ep) {
-		struct egress_info *einfo;
-
-		einfo = lookup_ip4_egress_endpoint(ip4->saddr, ip4->daddr);
-		if (einfo) {
-			*addr = einfo->egress_ip;
-			*from_endpoint = true;
-			return true;
-		}
-	}
-#endif
 
 	return false;
 }
