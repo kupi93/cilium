@@ -1136,8 +1136,13 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 # endif
 #endif /* defined(TUNNEL_MODE) && defined(IS_BPF_OVERLAY) */
 
+#ifndef ENABLE_MASQUERADE
+	/* if ENABLE_MASQUERADE not set, we are done */
+	return false;
+#endif
 
-#ifdef ENABLE_MASQUERADE /* SNAT local pod to world packets */
+	/* SNAT local pod to world packets */
+
 # ifdef IS_BPF_OVERLAY
 	/* Do not MASQ when this function is executed from bpf_overlay
 	 * (IS_BPF_OVERLAY denotes this fact). Otherwise, a packet will
@@ -1241,7 +1246,6 @@ static __always_inline bool snat_v4_needed(struct __ctx_buff *ctx, __be32 *addr,
 		}
 	}
 #endif
-#endif /*ENABLE_MASQUERADE */
 
 	return false;
 }
